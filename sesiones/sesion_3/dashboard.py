@@ -1,74 +1,86 @@
 """
 ================================================================================
- TUTORIAL + DASHBOARD: STREAMLIT PASO A PASO
+ DASHBOARD DE GASTOS — TODO EN UNA SOLA PÁGINA
 ================================================================================
+El script está dividido en grandes bloques, separados visualmente con
+st.divider(), de lo más simple a lo más avanzado:
 
-Este script cumple dos objetivos:
-
-  1. Enseñar, en orden, los componentes principales de Streamlit (con
-     comentarios explicando qué hace cada uno y por qué se usa).
-  2. Usar esos componentes para armar un dashboard real con tus datos
-     de GASTOS y PRESUPUESTO (leídos con polars).
+  0. Configuración de la página
+  1. Texto y títulos
+  2. Carga de datos
+  3. Estadística descriptiva (KPI cards: media, moda, desviación)
+  4. Preguntas de negocio (rankings, join contra presupuesto)
+  5. Dashboard interactivo (filtros + gráficos + descarga de CSV)
 
 Cómo correrlo:
-    streamlit run dashboard_gastos.py
+    streamlit run sesiones/sesion_3/dashboard.py
 
-Streamlit no es un script normal: cada vez que el usuario interactúa con un
-widget (un selectbox, un slider, etc.), Streamlit vuelve a ejecutar TODO el
-archivo de arriba hacia abajo. Por eso:
-  - El orden del código = el orden en que aparece en pantalla.
-  - Hay que evitar cálculos pesados repetidos -> para eso existe @st.cache_data.
+Streamlit no es un script normal: cada vez que alguien interactúa con un
+widget, Streamlit vuelve a ejecutar TODO el archivo de arriba hacia abajo.
+Por eso el orden del código = el orden en que aparece en pantalla, y por eso
+usamos @st.cache_data para no releer los CSV en cada interacción.
+
+NOTA SOBRE POLARS: evitamos la indexación con corchetes (`df["Columna"]`).
+En su lugar usamos siempre `.select(pl.col("Columna"))`, que es más
+explícito y es la forma recomendada de trabajar con polars.
 ================================================================================
 """
 
-import streamlit as st
 import polars as pl
-from pathlib import Path
+import streamlit as st
 from config import DATA_PROCESSED
-
-# from config import DATA_PROCESSED  # <- descomenta esto en tu proyecto real
-
 
 # ==============================================================================
 # PASO 0: CONFIGURACIÓN DE LA PÁGINA
+# ------------------------------------------------------------------------------
+# Método: st.set_page_config()
 # ==============================================================================
-# st.set_page_config() DEBE ser el primer comando de Streamlit que se ejecuta
-# en el script (antes de cualquier st.algo()). Configura el título de la
-# pestaña del navegador, el ícono, y si el layout usa todo el ancho de la
-# pantalla ("wide") o queda centrado ("centered").
+# DEBE ser el primer comando de Streamlit que se ejecuta en el script (antes
+# de cualquier otro st.algo()). Configura el título de la pestaña del
+# navegador, el ícono, y si el layout usa todo el ancho ("wide") o queda
+# centrado ("centered").
 st.set_page_config(
     page_title="Dashboard de Gastos",
     page_icon="💸",
     layout="wide",
 )
 
+# A cambiarlo:
+# st.set_page_config(
+#     page_title="Dashboard de Gastos",
+#     page_icon="💸",
+#     layout="wide",
+# )
+
 # ==============================================================================
 # PASO 1: TEXTO Y TÍTULOS
+# ------------------------------------------------------------------------------
+# Métodos: st.title() / st.header() / st.subheader() / st.markdown()
 # ==============================================================================
-# Streamlit tiene varios niveles de texto:
-#   st.title()    -> el título principal de la página (H1)
-#   st.header()   -> encabezado de sección (H2)
-#   st.subheader()-> subtítulo (H3)
-#   st.markdown() -> texto libre en formato Markdown (soporta **negrita**, etc.)
-#   st.write()    -> el "todoterreno": detecta el tipo de dato y lo muestra
-#                    bien (texto, número, DataFrame, gráfico...). Ideal para
-#                    prototipar rápido.
+# Streamlit tiene varios niveles de texto, del más grande al más chico:
+#   st.title()     -> título principal de la página (como un <h1>)
+#   st.header()    -> encabezado de sección (como un <h2>)
+#   st.subheader()  -> subtítulo (como un <h3>)
+#   st.markdown()   -> texto libre en formato Markdown (admite **negrita**,
+#                      *cursiva*, listas, etc.)
 st.title("💸 Dashboard de Gastos")
-st.markdown(
-    "Explorá tus gastos por **categoría**, **mes** y compará contra tu "
-    "**presupuesto**. Este dashboard fue construido con Streamlit + Polars."
-)
+st.subheader("Explora tus gastos por categoría y mes, y compara contra tu presupuesto.")
+st.markdown("Este dashboard fue construido con **Streamlit + Polars.**")
+
+# st.title("")
+# st.header("")
+# st.subheader("")
+# st.markdown("")
 
 
 # ==============================================================================
 # PASO 2: CARGA DE DATOS (con caché)
+# ------------------------------------------------------------------------------
+# Métodos: @st.cache_data / pl.read_csv()
 # ==============================================================================
-# @st.cache_data le dice a Streamlit: "esta función es cara/lenta, no la
-# vuelvas a ejecutar en cada interacción, guarda el resultado en memoria y
-# reusalo mientras los ARGUMENTOS no cambien". Es clave para no releer los
-# CSV cada vez que el usuario mueve un slider.
-
-
+# @st.cache_data le dice a Streamlit: "guarda el resultado de esta función en
+# memoria en lugar de volverla a ejecutar en cada interacción.
+# Es clave para no releer los CSV cada vez que haya cambios en la página.
 @st.cache_data
 def cargar_datos():
     gastos = pl.read_csv(DATA_PROCESSED / "gastos.csv", try_parse_dates=True)
@@ -76,229 +88,205 @@ def cargar_datos():
     return gastos, presupuesto
 
 
-# Si los archivos no existen (por ejemplo, al probar este script suelto),
-# generamos datos de ejemplo para que el dashboard siempre pueda mostrarse.
 GASTOS, PRESUPUESTO = cargar_datos()
 
-# ==============================================================================
-# PASO 3: LA BARRA LATERAL (SIDEBAR) Y LOS WIDGETS DE FILTRO
-# ==============================================================================
-# `with st.sidebar:` mete todo lo que está indentado adentro en la barra
-# lateral izquierda, en vez del cuerpo principal. Es el lugar clásico para
-# poner filtros que no queremos que ocupen espacio central.
-#
-# Cada widget de Streamlit devuelve el valor actual seleccionado por el
-# usuario. Guardarlo en una variable es lo que nos permite filtrar los datos.
-with st.sidebar:
-    st.header("🔍 Filtros")
 
-    # st.select_slider / st.slider: elegir un rango numérico con un control
-    # deslizante. Acá lo usamos para elegir un rango de meses.
-    meses_disponibles = list(GASTOS.select(pl.col("Mes")).unique().sort(pl.col("Mes")))
-    mes_min, mes_max = st.select_slider(
-        "Rango de meses",
-        options=meses_disponibles,
-    )
-    mes_min = mes_max = meses_disponibles[0]
-
-    # st.checkbox: un booleano simple (True/False).
-    solo_amor = st.checkbox("Mostrar solo gastos 'Amor' 💕", value=False)
-
-    # st.radio: elegir una sola opción entre pocas, mostradas todas a la vez.
-    orden = st.radio(
-        "Ordenar tabla por",
-        options=["Fecha", "Monto"],
-        horizontal=True,
-    )
-
-    # st.multiselect: elegir varias opciones de una lista.
-    categorias_disponibles = sorted(GASTOS["Categoría"].unique().to_list())
-    categorias_seleccionadas = st.multiselect(
-        "Categorías",
-        options=categorias_disponibles,
-        default=categorias_disponibles,  # por defecto, todas seleccionadas
-    )
-
+st.divider()
 
 # ==============================================================================
-# PASO 4: APLICAR LOS FILTROS CON POLARS
+# PASO 3: ESTADÍSTICA DESCRIPTIVA (KPI cards: media, moda, desviación)
+# ------------------------------------------------------------------------------
+# Métodos (polars): pl.col().mean() / .mode() / .std()
+# Métodos (streamlit): st.columns() / st.metric()
 # ==============================================================================
-# Con los valores que salieron de los widgets, filtramos el DataFrame de
-# polars normalmente, usando pl.col(...) como siempre.
-gastos_filtrados = GASTOS.filter(
-    pl.col("Categoría").is_in(categorias_seleccionadas)
-    & pl.col("Mes").is_between(mes_min, mes_max)
-)
+# .mean()  -> promedio
+# .mode()  -> el valor que más se repite (puede haber empates, por eso
+#             usamos .first() para quedarnos con uno solo)
+# .std()   -> desviación estándar: qué tan dispersos están los montos
+#             respecto al promedio
+st.header("📐 Estadística descriptiva")
 
-if solo_amor:
-    gastos_filtrados = gastos_filtrados.filter(pl.col("Amor") == 1)
-
-gastos_filtrados = gastos_filtrados.sort(orden)
-
-
-# ==============================================================================
-# PASO 5: MÉTRICAS (KPIs) CON st.columns Y st.metric
-# ==============================================================================
-# st.columns(n) divide el ancho disponible en n columnas para poner
-# elementos uno al lado del otro (en vez de apilados verticalmente).
-# st.metric() muestra un número grande con una etiqueta, ideal para KPIs,
-# y opcionalmente una flecha de variación (delta) arriba/abajo.
 col1, col2, col3 = st.columns(3)
 
-total_gastado = gastos_filtrados["Monto"].sum() or 0.0
-total_presupuesto = PRESUPUESTO["Presupuesto"].sum() or 0.0
-diferencia = total_presupuesto - total_gastado
-n_transacciones = gastos_filtrados.height
+promedio_gasto = GASTOS.select(pl.col("Monto").mean()).item()
+moda_categoria = GASTOS.select(pl.col("Categoría").mode().first()).item()
+desviacion_gasto = GASTOS.select(pl.col("Monto").std()).item()
 
 with col1:
-    st.metric("Total gastado", f"S/ {total_gastado:,.2f}")
+    st.metric("Gasto promedio por transferencia", f"S/ {promedio_gasto:,.2f}")
 with col2:
-    st.metric(
-        "Vs. presupuesto",
-        f"S/ {total_presupuesto:,.2f}",
-        delta=f"S/ {diferencia:,.2f} disponible" if diferencia >= 0 else f"S/ {abs(diferencia):,.2f} excedido",
-        delta_color="normal" if diferencia >= 0 else "inverse",
-    )
+    st.metric("Categoría más frecuente", moda_categoria)
 with col3:
-    st.metric("N° de transacciones", n_transacciones)
+    st.metric("Desviación estándar", f"S/ +/-{desviacion_gasto:,.2f}")
+
+st.divider()
 
 
 # ==============================================================================
-# PASO 6: TABS PARA ORGANIZAR CONTENIDO
+# PASO 4: PREGUNTAS DE NEGOCIO
 # ==============================================================================
-# st.tabs() crea pestañas dentro de la página. Cada pestaña es un contexto
-# `with` donde metemos contenido distinto, sin necesidad de scroll infinito.
-tab_resumen, tab_tabla, tab_comparacion = st.tabs(
-    ["📊 Resumen", "📋 Tabla detallada", "🎯 Presupuesto vs Real"]
+# Nota: las preguntas que dependen de UN MES en particular (por ejemplo,
+# "¿en qué categoría gasté más ESTE mes?") no van acá. Esas se responden
+# con los filtros del Dashboard interactivo del paso 5 (filtrando por mes).
+st.header("❓ Preguntas de negocio")
+
+# ---- 1. ¿En qué categoría gasté más dinero? (ranking) ----------------------
+# Métodos: .group_by() / .agg() / .sort() / st.dataframe() / st.bar_chart()
+
+st.subheader("1. ¿En qué categoría gasté más dinero?")
+
+monto_por_categoria = (
+    GASTOS.group_by("Categoría")
+    .agg(pl.col("Monto").sum().alias("Monto"))
+    .sort("Monto", descending=True)
 )
 
+col_izq, col_der = st.columns(2)
+with col_izq:
+    st.dataframe(monto_por_categoria, width="stretch")
+with col_der:
+    st.bar_chart(monto_por_categoria, x="Categoría", y="Monto")
 
-# ---- TAB 1: RESUMEN -----------------------------------------------------
-with tab_resumen:
-    st.subheader("Gasto total por categoría")
+st.divider()
 
-    # Agrupamos con polars y pasamos a pandas para los charts nativos de
-    # Streamlit, que esperan pandas o dicts/listas simples.
-    gasto_por_categoria = (
-        gastos_filtrados.group_by("Categoría")
-        .agg(pl.col("Monto").sum().alias("Monto"))
-        .sort("Monto", descending=True)
-        .to_pandas()
-        .set_index("Categoría")
+# ---- 2. ¿En qué mes gasté más dinero? (ranking) ----------------------------
+# Métodos: .group_by() / .agg() / .sort()
+#
+# Igual que la pregunta 1, pero agrupando por "Mes" en vez de "Categoría".
+st.subheader("2. ¿En qué mes gasté más dinero?")
+
+monto_por_mes = (
+    GASTOS.group_by("Mes")
+    .agg(pl.col("Monto").sum().alias("Monto"))
+    .sort("Monto", descending=True)
+)
+
+col_izq, col_der = st.columns(2)
+with col_izq:
+    st.dataframe(monto_por_mes, width="stretch")
+with col_der:
+    st.bar_chart(monto_por_mes, x="Mes", y="Monto")
+
+st.divider()
+
+# ---- 3. ¿Qué % de mis gastos son "por amor" vs normales? -------------------
+# Métodos: .group_by() / .agg() / .with_columns() / .iter_rows()
+#
+# Primero sumamos el Monto agrupado por "Amor" (0 o 1). Después dividimos
+# cada grupo entre el total general y multiplicamos por 100 para tener un
+# porcentaje. .with_columns() agrega esa nueva columna calculada al DataFrame.
+st.subheader("3. ¿Qué porcentaje de mis gastos son 'por amor'? 💕")
+
+monto_por_amor = GASTOS.group_by("Amor").agg(pl.col("Monto").sum().alias("Monto"))
+total_general = monto_por_amor.select(pl.col("Monto").sum()).item()
+
+monto_por_amor = monto_por_amor.with_columns(
+    (pl.col("Monto") / total_general * 100).alias("Porcentaje")
+)
+
+col_normal, col_amor = st.columns(2)
+for fila in monto_por_amor.iter_rows(named=True):
+    columna = col_amor if fila["Amor"] == 1 else col_normal
+    etiqueta = "Por amor 💕" if fila["Amor"] == 1 else "Gasto normal"
+    with columna:
+        st.metric(etiqueta, f"{fila['Porcentaje']:.1f}%", f"S/ {fila['Monto']:,.2f}")
+
+st.divider()
+
+# ---- 4. ¿Me paso del presupuesto en alguna categoría? ----------------------
+# Métodos: .filter() / .group_by() / .agg() / join()
+# Métodos (streamlit): st.selectbox() / st.columns() / st.column_config.ProgressColumn()
+#
+# Como el presupuesto es MENSUAL, tiene sentido comparar el gasto de UN MES
+# específico contra el presupuesto mensual de cada categoría.
+
+st.subheader("4. ¿Me paso del presupuesto en alguna categoría?")
+
+# La fila "Total" del presupuesto no representa una categoría real,
+# por lo que la eliminamos antes de hacer la comparación.
+presupuesto_categorias = PRESUPUESTO.filter(pl.col("Categoría") != "Total")
+
+# ---- Selector de mes -------------------------------------------------------
+# Usamos un selectbox para elegir el mes a analizar.
+# Lo colocamos dentro de una columna angosta para que el widget no ocupe
+# todo el ancho de la página.
+meses_disponibles = (
+    GASTOS.select(pl.col("Mes")).unique().sort("Mes").to_series().to_list()
+)
+
+col_mes, _ = st.columns([1, 8])
+
+with col_mes:
+    mes_seleccionado = st.selectbox(
+        "Mes",
+        options=meses_disponibles,
     )
 
-    col_izq, col_der = st.columns(2)
-    with col_izq:
-        # st.bar_chart: gráfico de barras rápido, sin configurar nada.
-        st.bar_chart(gasto_por_categoria)
-    with col_der:
-        # st.dataframe: tabla interactiva (se puede ordenar por columna,
-        # buscar, hacer scroll). Distinto de st.table(), que es estática.
-        st.dataframe(gasto_por_categoria, width="stretch")
+st.caption(f"Comparación del presupuesto para el mes {mes_seleccionado}")
 
-    st.subheader("Evolución mensual")
-    gasto_por_mes = (
-        gastos_filtrados.group_by("Mes")
-        .agg(pl.col("Monto").sum().alias("Monto"))
-        .sort("Mes")
-        .to_pandas()
-        .set_index("Mes")
+# ---- Filtrar el mes seleccionado -------------------------------------------
+gastos_mes = GASTOS.filter(pl.col("Mes") == mes_seleccionado)
+
+# ---- Calcular gasto por categoría ------------------------------------------
+gasto_por_categoria = gastos_mes.group_by("Categoría").agg(
+    pl.col("Monto").sum().alias("Gastado")
+)
+
+# ---- Comparar contra el presupuesto ----------------------------------------
+# Además calculamos:
+# - Porcentaje del presupuesto utilizado.
+# - Un indicador visual (🟢 o 🔴) dependiendo de si se excedió.
+comparacion = (
+    presupuesto_categorias.join(
+        gasto_por_categoria,
+        on="Categoría",
+        how="left",
     )
-    # st.line_chart: igual que bar_chart pero como línea, útil para ver
-    # tendencias en el tiempo.
-    st.line_chart(gasto_por_mes)
-
-
-# ---- TAB 2: TABLA DETALLADA ----------------------------------------------
-with tab_tabla:
-    st.subheader("Todas las transacciones filtradas")
-
-    # st.dataframe acepta un objeto `column_config` para personalizar cómo
-    # se ve cada columna (formato de moneda, barras de progreso, etc.)
-    st.dataframe(
-        gastos_filtrados.to_pandas(),
-        width="stretch",
-        column_config={
-            "Monto": st.column_config.NumberColumn("Monto", format="S/ %.2f"),
-            "Amor": st.column_config.CheckboxColumn("¿Amor?"),
-        },
-        hide_index=True,
+    .fill_null(0)
+    .with_columns((pl.col("Gastado") / pl.col("Presupuesto") * 100).alias("Porcentaje"))
+    .with_columns(
+        pl.when(pl.col("Porcentaje") <= 99)
+        .then(pl.lit("🟢"))
+        .otherwise(pl.lit("🔴"))
+        .alias("Estado")
     )
+)
 
-    # st.download_button: permite exportar lo que se está viendo. Muy común
-    # en dashboards reales para que el usuario se lleve los datos filtrados.
-    csv_bytes = gastos_filtrados.write_csv().encode("utf-8")
-    st.download_button(
-        "⬇️ Descargar CSV filtrado",
-        data=csv_bytes,
-        file_name="gastos_filtrados.csv",
-        mime="text/csv",
-    )
-
-
-# ---- TAB 3: PRESUPUESTO VS REAL ------------------------------------------
-with tab_comparacion:
-    st.subheader("¿Cómo vas respecto a tu presupuesto?")
-
-    comparacion = (
-        PRESUPUESTO.join(
-            gastos_filtrados.group_by("Categoría").agg(pl.col("Monto").sum().alias("Gastado")),
-            on="Categoría",
-            how="left",
-        )
-        .fill_null(0)
-        .with_columns(
-            (pl.col("Gastado") / pl.col("Presupuesto")).alias("pct")
-        )
-    )
-
-    # st.progress: barra de progreso simple, útil para ver de un vistazo
-    # qué porcentaje del presupuesto de cada categoría ya se gastó.
-    for fila in comparacion.iter_rows(named=True):
-        pct = min(max(fila["pct"], 0.0), 1.0)  # st.progress necesita 0..1
-        st.write(f"**{fila['Categoría']}** — S/ {fila['Gastado']:,.2f} de S/ {fila['Presupuesto']:,.2f}")
-        st.progress(pct)
-        if fila["pct"] > 1:
-            # st.error / st.warning / st.success / st.info: cajas de alerta
-            # con color, para resaltar mensajes puntuales.
-            st.error(f"⚠️ Te pasaste del presupuesto en {fila['Categoría']}")
-
-
-# ==============================================================================
-# PASO 7: EXPANDER PARA CONTENIDO OPCIONAL
-# ==============================================================================
-# st.expander crea una sección plegable, ideal para detalles que no todos
-# necesitan ver siempre (notas, explicación de la metodología, datos crudos).
-with st.expander("ℹ️ ¿Cómo se calculan estas cifras?"):
-    st.markdown(
-        """
-        - **Total gastado**: suma de la columna `Monto` en los gastos filtrados.
-        - **Presupuesto**: suma de la columna `Presupuesto`, sin filtrar
-          (el presupuesto es fijo, no depende de los filtros de fecha/categoría).
-        - **% usado por categoría**: `Gastado / Presupuesto` de esa categoría.
-        """
-    )
-
-
-# ==============================================================================
-# RESUMEN DE COMPONENTES USADOS (referencia rápida)
-# ==============================================================================
-# st.set_page_config   -> configurar la pestaña/layout (siempre primero)
-# @st.cache_data        -> cachear funciones lentas (ej. leer CSV)
-# st.title/header/...   -> jerarquía de texto
-# st.markdown           -> texto con formato libre
-# st.sidebar            -> barra lateral para filtros
-# st.multiselect         -> elegir varias opciones
-# st.slider              -> elegir rango numérico
-# st.checkbox            -> booleano
-# st.radio                -> una opción entre pocas
-# st.columns              -> layout en columnas
-# st.metric                -> KPI con delta
-# st.tabs                  -> pestañas de contenido
-# st.bar_chart / line_chart -> gráficos rápidos
-# st.dataframe              -> tabla interactiva
-# st.download_button         -> exportar datos
-# st.progress                 -> barra de avance
-# st.error/warning/success/info -> cajas de alerta
-# st.expander                    -> contenido plegable
-# ==============================================================================
+# ---- Mostrar resultados ----------------------------------------------------
+# ProgressColumn dibuja automáticamente una barra horizontal para visualizar
+# qué porcentaje del presupuesto se ha utilizado.
+# Como Streamlit no permite cambiar el color de la barra, agregamos una
+# columna "Estado" con un semáforo:
+#   🟢 = dentro del presupuesto
+#   🔴 = presupuesto excedido
+st.dataframe(
+    comparacion.select(
+        [
+            "Categoría",
+            "Gastado",
+            "Presupuesto",
+            "Estado",
+            "Porcentaje",
+        ]
+    ),
+    column_config={
+        "Gastado": st.column_config.NumberColumn(
+            format="S/ %.2f",
+        ),
+        "Presupuesto": st.column_config.NumberColumn(
+            format="S/ %.2f",
+        ),
+        "Estado": st.column_config.TextColumn(
+            "Estado",
+            width="small",
+        ),
+        "Porcentaje": st.column_config.ProgressColumn(
+            "% usado",
+            format="%.0f%%",
+            min_value=0,
+            max_value=100,
+        ),
+    },
+    hide_index=True,
+    width="stretch",
+)
